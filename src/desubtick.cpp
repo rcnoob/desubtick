@@ -1,4 +1,6 @@
 #include "desubtick.h"
+#include <fstream>
+#include <iostream>
 
 #include "utils/addresses.h"
 
@@ -7,6 +9,7 @@
 
 DesubtickPlugin g_DesubtickPlugin;
 CUtlVector<CDetourBase*> g_vecDetours;
+float desiredTickrate = 128.0f;
 
 #define DECLARE_BASEPLAYER_DETOUR(name) DECLARE_DETOUR(name, BasePlayer::Detour_##name, &modules::server);
 #define DECLARE_BASEPLAYER_EXTERN_DETOUR(name) extern CDetour<decltype(BasePlayer::Detour_##name)> name;
@@ -27,7 +30,12 @@ bool DesubtickPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxle
 {
 	PLUGIN_SAVEVARS();
 	modules::server = new CModule(GAMEBIN, "server");
-	
+	std::ifstream configFile("tickrate.txt");
+
+    if (configFile.is_open()) {
+        configFile >> desiredTickrate;
+        configFile.close();
+    }
 	INIT_DETOUR(ProcessUsercmds);
 
 	return true;
@@ -35,6 +43,8 @@ bool DesubtickPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxle
 
 void FASTCALL BasePlayer::Detour_ProcessUsercmds(void* self, CUserCmd* usercmd, int totalcmds, bool paused)
 {
+	float subticksPerTick = desiredTickrate / 64.0f;
+	float accumulatedSubticks = 0.0f;
 	for(int x = 0; x < totalcmds; x++)
 	{
 		CUserCmd* ptr = reinterpret_cast<CUserCmd*>(reinterpret_cast<char*>(usercmd) + (sizeof(CUserCmd)*x));
@@ -42,7 +52,10 @@ void FASTCALL BasePlayer::Detour_ProcessUsercmds(void* self, CUserCmd* usercmd, 
 
 		for(int i = 0; i < subtick_moves_count; i++)
 		{
-			ptr->base->subtick_moves.rep->elements[i]->when = 0.0f;
+			float when = accumulatedSubticks - static_cast<int>(accumulatedSubticks);
+			ptr->base->subtick_moves.rep->elements[i]->when = when;
+
+			accumulatedSubticks += subticksPerTick;
 		}
 	}
 	ProcessUsercmds(self, usercmd, totalcmds, paused);
