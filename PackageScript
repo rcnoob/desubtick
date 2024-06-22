@@ -41,6 +41,18 @@ for task in MMSPlugin.binaries:
   if task.debug:
     pdb_list.append(task.debug)
 
+for task in MMSPlugin.mode_binaries:
+  builder.AddCopy(task.binary, mode_folder)
+
+  if task.debug:
+    pdb_list.append(task.debug)
+
+for task in MMSPlugin.style_binaries:
+  builder.AddCopy(task.binary, style_folder)
+
+  if task.debug:
+    pdb_list.append(task.debug)
+
 builder.AddCopy(os.path.join(builder.buildPath, MMSPlugin.plugin_name + '.vdf'), metamod_folder)
 
 # Generate PDB info.
