@@ -1,6 +1,9 @@
 #include "desubtick.h"
 #include <fstream>
 #include <iostream>
+#include "networkbasetypes.pb.h"
+#include "usercmd.pb.h"
+#include "cs_usercmd.pb.h"
 
 #include "utils/addresses.h"
 
@@ -30,35 +33,33 @@ bool DesubtickPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxle
 {
 	PLUGIN_SAVEVARS();
 	modules::server = new CModule(GAMEBIN, "server");
-	std::ifstream configFile("tickrate.txt");
 
-    if (configFile.is_open()) {
-        configFile >> desiredTickrate;
-        configFile.close();
-    }
 	INIT_DETOUR(ProcessUsercmds);
 
 	return true;
 }
 
-void FASTCALL BasePlayer::Detour_ProcessUsercmds(void* self, CUserCmd* usercmd, int totalcmds, bool paused)
+class CUserCmd
 {
-	float subticksPerTick = desiredTickrate / 64.0f;
-	float accumulatedSubticks = 0.0f;
-	for(int x = 0; x < totalcmds; x++)
+public:
+	CSGOUserCmdPB cmd;
+	[[maybe_unused]] char pad1[0x38];
+#ifdef PLATFORM_WINDOWS
+	[[maybe_unused]] char pad2[0x8];
+#endif
+};
+
+void FASTCALL BasePlayer::Detour_ProcessUsercmds(CBasePlayerPawn *pPawn, CUserCmd *cmds, int totalcmds, bool paused, float margin)
+{
+	for (int i = 0; i < totalcmds; i++)
 	{
-		CUserCmd* ptr = reinterpret_cast<CUserCmd*>(reinterpret_cast<char*>(usercmd) + (sizeof(CUserCmd)*x));
-		int subtick_moves_count = ptr->base->subtick_moves.current_size;
+		CSGOUserCmdPB *pUserCmd = &cmds[i].cmd;
 
-		for(int i = 0; i < subtick_moves_count; i++)
-		{
-			float when = accumulatedSubticks - static_cast<int>(accumulatedSubticks);
-			ptr->base->subtick_moves.rep->elements[i]->when = when;
-
-			accumulatedSubticks += subticksPerTick;
-		}
+		for (int j = 0; j < pUserCmd->mutable_base()->subtick_moves_size(); j++)
+			pUserCmd->mutable_base()->mutable_subtick_moves(j)->set_when(0.f);
 	}
-	ProcessUsercmds(self, usercmd, totalcmds, paused);
+
+	ProcessUsercmds(pPawn, cmds, totalcmds, paused, margin);
 }
 
 bool DesubtickPlugin::Unload(char *error, size_t maxlen)
